@@ -5,7 +5,7 @@ import * as archieml from "https://x.kite.run/lib/archieml.js";
 const subscriptions = new Set<number>();
 const map = new Map<number, Match>();
 
-const VERSION = "1.9";
+const VERSION = "1.10";
 
 const DATA_ENDPOINT = "wss://livedata.betradar.com:2018/";
 
@@ -48,6 +48,7 @@ try {
 }
 
 let config: any = archieml.load(Deno.readTextFileSync("config.txt"));
+const courtIds = new Map<string, number>();
 
 function isConfigValid(config: any) {
 	if (
@@ -69,6 +70,10 @@ if (
 	);
 	console.error(config);
 	Deno.exit(1);
+} else {
+	config.courts.forEach((ct: any, i: number) => {
+		courtIds.set(ct.type, i);
+	});
 }
 
 // Match ID examples
@@ -83,7 +88,6 @@ type Config = {
 		type: string;
 		value: string;
 	}[];
-	cm: Map<string, string | number>;
 };
 
 const ws = new WebSocket(DATA_ENDPOINT);
@@ -93,11 +97,9 @@ const parseConfigAndPrint = debounce(async () => {
 	let newConfig: Config = archieml.load(configText) as Config;
 	if (isConfigValid(newConfig)) {
 		// Create config order map
-		let cm = new Map<string, number>();
 		newConfig.courts.forEach((ct, i) => {
-			cm.set(ct.type, i);
+			courtIds.set(ct.type, i);
 		});
-		newConfig.cm = cm;
 		config = newConfig;
 		console.error(
 			"[config] Change detected in config.txt. Updating subscriptions.",
@@ -179,7 +181,7 @@ class Match {
 	toXML() {
 		// 50 represents an advantage so handle its transform on printing here
 		let p1g = this.p1_score[0];
-		let p2g = this.p1_score[0];
+		let p2g = this.p2_score[0];
 		return `
 <row>
 	<CourtId>${this.courtId}</CourtId>
@@ -208,19 +210,19 @@ class Match {
 
 	updateCourt(match: any) {
 		let court = "";
-		let id = 6;
 		if (match["court"]) {
 			court = match["court"]?.["@name"];
 			court = court.replaceAll(" ", "");
 			this.courtName = court;
-			id = config?.cm?.get(court);
+			let id = courtIds.get(court);
 			if (typeof id != "undefined") {
-				this.courtName = court;
 				this.courtId = id;
 			} else {
 				console.error(
-					`[config error] Court name "${court}" not found in config.txt`,
+					`[config error] Court name "${court}" does not map to a local court id number`,
 				);
+				console.error(JSON.stringify(courtIds));
+				console.error(JSON.stringify(config));
 			}
 		}
 	}
