@@ -5,7 +5,7 @@ import * as archieml from "https://x.kite.run/lib/archieml.js";
 const subscriptions = new Set<number>();
 const map = new Map<number, Match>();
 
-const VERSION = "1.2";
+const VERSION = "1.3";
 
 console.error(
 	`Starting ITF Relay by Brandon Kalinowski v${VERSION}. Reads config.txt file from binary directory.`,
@@ -287,10 +287,6 @@ function printMatches() {
 				str = str + "<row></row>\n";
 			}
 		}
-	});
-
-	map.forEach((match) => {
-		str = str + match.toXML();
 	});
 	str = str + "</data>";
 	Deno.writeTextFile(config.filename, str);
