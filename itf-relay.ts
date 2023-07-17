@@ -39,7 +39,9 @@ try {
 	const f = await Deno.open("config.txt");
 } catch (e) {
 	if (e instanceof Deno.errors.NotFound) {
-		console.error("Config file does not exists. Writing template config.txt and exiting.");
+		console.error(
+			"Config file does not exists. Writing template config.txt and exiting.",
+		);
 		Deno.writeTextFileSync("config.txt", configTemplate);
 		Deno.exit(1);
 	}
@@ -78,11 +80,11 @@ type Config = {
 	password: string;
 	filename: string;
 	courts: {
-		type: string,
-		value: string,
+		type: string;
+		value: string;
 	}[];
-	cm: Map<string, string | number>
-}
+	cm: Map<string, string | number>;
+};
 
 const ws = new WebSocket(DATA_ENDPOINT);
 
@@ -91,13 +93,15 @@ const parseConfigAndPrint = debounce(async () => {
 	let newConfig: Config = archieml.load(configText) as Config;
 	if (isConfigValid(newConfig)) {
 		// Create config order map
-		let cm = new Map<string, number>;
+		let cm = new Map<string, number>();
 		newConfig.courts.forEach((ct, i) => {
-			cm.set(ct.type, i)
+			cm.set(ct.type, i);
 		});
 		newConfig.cm = cm;
 		config = newConfig;
-		console.error("[config] Change detected in config.txt. Updating subscriptions.")
+		console.error(
+			"[config] Change detected in config.txt. Updating subscriptions.",
+		);
 		console.error(JSON.stringify(config));
 	} else {
 		console.error(`[error] Invalid config ${JSON.stringify(config)}`);
@@ -133,9 +137,9 @@ function updateSubscriptions() {
 }
 
 function formatName(input: string): string {
-	let parts = input.split(", ")
+	let parts = input.split(", ");
 	if (parts.length >= 2) {
-		return `${parts[1][0]}. ${parts[0]}`
+		return `${parts[1][0]}. ${parts[0]}`;
 	}
 	return input;
 }
@@ -209,11 +213,13 @@ class Match {
 			court = match["court"]?.["@name"];
 			court = court.replaceAll(" ", "");
 			id = config?.cm?.get(court);
-			if (typeof id != 'undefined') {
+			if (typeof id != "undefined") {
 				this.courtName = court;
 				this.courtId = id;
 			} else {
-				console.error(`[config error] Court name "${court}" not found in config.txt`);
+				console.error(
+					`[config error] Court name "${court}" not found in config.txt`,
+				);
 			}
 		}
 	}
@@ -322,10 +328,14 @@ function printMatches() {
 						"[edge case] Invalid match is missing matchId stored in state",
 					);
 				}
-				console.error(`Printing match ${match.matchId} on court "${match.courtName}"`);
+				console.error(
+					`Printing match ${match.matchId} on court "${match.courtName}"`,
+				);
 				str = str + match.toXML();
 			} else {
-				console.error(`[edge case] Printing empty row for match ${ct.value} n="${n}"`);
+				console.error(
+					`[edge case] Printing empty row for match ${ct.value} n="${n}"`,
+				);
 				str = str + "<row/>\n";
 			}
 		}
