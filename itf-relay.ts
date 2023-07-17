@@ -5,7 +5,7 @@ import * as archieml from "https://x.kite.run/lib/archieml.js";
 const subscriptions = new Set<number>();
 const map = new Map<number, Match>();
 
-const VERSION = "1.0";
+const VERSION = "1.2";
 
 console.error(
 	`Starting ITF Relay by Brandon Kalinowski v${VERSION}. Reads config.txt file from binary directory.`,
@@ -71,7 +71,10 @@ async function watchConfigFile() {
 
 function updateSubscriptions() {
 	config.courts.forEach((ct: any) => {
-		if (ct && ct.value && ct.type != "text" && ct.value != "skip") {
+		if (ct && ct.value && ct.type != "text") {
+			if (ct.value == "skip") {
+				return;
+			}
 			let v = ct.value;
 			if (!subscriptions.has(v)) {
 				subscribe(v);
@@ -257,15 +260,32 @@ function printMatches() {
 
 	config.courts.forEach((ct: { type: string; value: number | string }) => {
 		if (ct.value == "skip") {
-			console.error(`[skip defined in config] Printing empty row for match ${ct.value}`);
-			str = str + "<row></row\n";
-		} else if (map.has(ct.value as number)) {
-			let match = map.get(ct.value as number)!;
-			console.error(`Printing match ${match.matchId}`);
-			str = str + match.toXML();
+			console.error(
+				`[skip defined in config] Printing empty row for match ${ct.value}`,
+			);
+			str = str + "<row></row>\n";
 		} else {
-			console.error(`Printing empty row for match ${ct.value}`);
-			str = str + "<row></row\n";
+			let n = Number(ct.value);
+			if (!isNaN(n) && map.has(n)) {
+				let match = map.get(n);
+				if (!match) {
+					console.error(
+						"[edge case] Unexpected state. Match stopped existing in map",
+					);
+					str = str + "<row></row>\n";
+					return;
+				}
+				if (!match.matchId) {
+					console.error(
+						"[edge case] Invalid match is missing matchId stored in state",
+					);
+				}
+				console.error(`Printing match ${match.matchId}`);
+				str = str + match.toXML();
+			} else {
+				console.error(`[edge case] Printing empty row for match ${ct.value}`);
+				str = str + "<row></row>\n";
+			}
 		}
 	});
 
