@@ -5,7 +5,7 @@ import * as archieml from "https://x.kite.run/lib/archieml.js";
 const subscriptions = new Set<number>();
 const map = new Map<number, Match>();
 
-const VERSION = "1.3";
+const VERSION = "1.4";
 
 console.error(
 	`Starting ITF Relay by Brandon Kalinowski v${VERSION}. Reads config.txt file from binary directory.`,
@@ -263,7 +263,7 @@ function printMatches() {
 			console.error(
 				`[skip defined in config] Printing empty row for match ${ct.value}`,
 			);
-			str = str + "<row></row>\n";
+			str = str + "<row/>\n";
 		} else {
 			let n = Number(ct.value);
 			if (!isNaN(n) && map.has(n)) {
@@ -272,7 +272,7 @@ function printMatches() {
 					console.error(
 						"[edge case] Unexpected state. Match stopped existing in map",
 					);
-					str = str + "<row></row>\n";
+					str = str + "<row/>\n";
 					return;
 				}
 				if (!match.matchId) {
@@ -284,7 +284,7 @@ function printMatches() {
 				str = str + match.toXML();
 			} else {
 				console.error(`[edge case] Printing empty row for match ${ct.value}`);
-				str = str + "<row></row>\n";
+				str = str + "<row/>\n";
 			}
 		}
 	});
