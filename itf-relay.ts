@@ -5,7 +5,7 @@ import * as archieml from "https://x.kite.run/lib/archieml.js";
 const subscriptions = new Set<number>();
 const map = new Map<number, Match>();
 
-const VERSION = "1.8";
+const VERSION = "1.9";
 
 const DATA_ENDPOINT = "wss://livedata.betradar.com:2018/";
 
@@ -287,7 +287,7 @@ class Match {
 			if (team) {
 				if (team == "home") {
 					this.p1_serve = ".";
-					this.p1_serve = "";
+					this.p2_serve = "";
 				} else if (team == "away") {
 					this.p1_serve = "";
 					this.p2_serve = ".";
