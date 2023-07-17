@@ -5,7 +5,7 @@ import * as archieml from "https://x.kite.run/lib/archieml.js";
 const subscriptions = new Set<number>();
 const map = new Map<number, Match>();
 
-const VERSION = "1.4";
+const VERSION = "1.5";
 
 console.error(
 	`Starting ITF Relay by Brandon Kalinowski v${VERSION}. Reads config.txt file from binary directory.`,
@@ -39,9 +39,20 @@ try {
 
 let config: any = archieml.load(Deno.readTextFileSync("config.txt"));
 
+function isConfigValid(config: any) {
+	if (
+		config &&
+		config.username && config.password && config.filename &&
+		config.filename.endsWith(".xml") &&
+		config.courts && Array.isArray(config.courts)
+	) {
+		return true;
+	}
+	return false;
+}
+
 if (
-	!config.username || !config.password || !config.filename.endsWith(".xml") ||
-	!config.courts
+	!isConfigValid(config)
 ) {
 	console.error(
 		"Invalid usage. Expected ArchieML config.txt file with username, password, XML filename, and court configs but got",
@@ -57,9 +68,15 @@ if (
 const ws = new WebSocket("wss://livedata.betradar.com:2018/");
 
 const parseConfig = debounce(async () => {
-	config = await Deno.readTextFile("config.txt");
-	let data = archieml.load(config);
-	console.log(JSON.stringify(data));
+	let configText = await Deno.readTextFile("config.txt");
+	let newConfig = archieml.load(config);
+	// Validate config
+	if (isConfigValid(newConfig)) {
+		config = newConfig;
+		console.error(JSON.stringify(config));
+	} else {
+		console.error(`[error] Invalid config ${JSON.stringify(config)}`);
+	}
 }, 200);
 
 async function watchConfigFile() {
