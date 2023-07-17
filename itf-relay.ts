@@ -5,7 +5,9 @@ import * as archieml from "https://x.kite.run/lib/archieml.js";
 const subscriptions = new Set<number>();
 const map = new Map<number, Match>();
 
-const VERSION = "1.5";
+const VERSION = "1.7";
+
+const DATA_ENDPOINT = "wss://livedata.betradar.com:2018/";
 
 console.error(
 	`Starting ITF Relay by Brandon Kalinowski v${VERSION}. Reads config.txt file from binary directory.`,
@@ -18,11 +20,17 @@ filename: itf-data.xml
 [+courts]
 CentreCourt: skip
 Court8: skip
-Court11: skip
+Court4: skip
 Court1: skip
+Court11: skip
 Court7: skip
 []
 `;
+
+// If 50 make Ad
+// If serve team home change serve marker
+
+// courts: [{"court11"}]
 
 // Initialize from config file
 
@@ -31,7 +39,7 @@ try {
 	const f = await Deno.open("config.txt");
 } catch (e) {
 	if (e instanceof Deno.errors.NotFound) {
-		console.error("Config file does not exists. Writing template config.txt");
+		console.error("Config file does not exists. Writing template config.txt and exiting.");
 		Deno.writeTextFileSync("config.txt", configTemplate);
 		Deno.exit(1);
 	}
@@ -65,24 +73,43 @@ if (
 // "42324353"
 // "42325417"
 
-const ws = new WebSocket("wss://livedata.betradar.com:2018/");
+type Config = {
+	username: string;
+	password: string;
+	filename: string;
+	courts: {
+		type: string,
+		value: string,
+	}[];
+	cm: Map<string, string | number>
+}
 
-const parseConfig = debounce(async () => {
+const ws = new WebSocket(DATA_ENDPOINT);
+
+const parseConfigAndPrint = debounce(async () => {
 	let configText = await Deno.readTextFile("config.txt");
-	let newConfig = archieml.load(config);
-	// Validate config
+	let newConfig: Config = archieml.load(configText) as Config;
 	if (isConfigValid(newConfig)) {
+		// Create config order map
+		let cm = new Map<string, number>;
+		newConfig.courts.forEach((ct, i) => {
+			cm.set(ct.type, i)
+		});
+		newConfig.cm = cm;
 		config = newConfig;
+		console.error("[config] Change detected in config.txt. Updating subscriptions.")
 		console.error(JSON.stringify(config));
 	} else {
 		console.error(`[error] Invalid config ${JSON.stringify(config)}`);
+		return;
 	}
+	updateSubscriptions();
+	printMatches();
 }, 200);
 
 async function watchConfigFile() {
 	for await (const event of Deno.watchFs("config.txt")) {
-		parseConfig();
-		updateSubscriptions();
+		parseConfigAndPrint();
 	}
 }
 
@@ -105,6 +132,14 @@ function updateSubscriptions() {
 	});
 }
 
+function formatName(input: string): string {
+	let parts = input.split(", ")
+	if (parts.length >= 2) {
+		return `${parts[1][0]}. ${parts[0]}`
+	}
+	return input;
+}
+
 class Match {
 	p1: string;
 	p2: string;
@@ -121,7 +156,7 @@ class Match {
 
 	lastUpdated: Date;
 
-	constructor(matchId: number) {
+	constructor() {
 		this.p1 = "";
 		this.p2 = "";
 		this.time = "";
@@ -162,29 +197,20 @@ class Match {
 </row>
 `;
 	}
+	// { type: abc, value: id }
 
 	updateCourt(match: any) {
 		let court = "";
 		let id = 6;
 		if (match["court"]) {
 			court = match["court"]?.["@name"];
-			switch (court) {
-				case "Centre Court":
-					id = 0;
-				case "Court 8":
-					id = 1;
-					break;
-				case "Court 1":
-					id = 2;
-					break;
-				case "Court 11":
-					id = 3;
-					break;
-				case "Court 7":
-					id = 4;
-					break;
-				default:
-					id = 6;
+			court = court.replaceAll(" ", "");
+			id = config?.cm?.get(court);
+			if (typeof id != 'undefined') {
+				this.courtName = court;
+				this.courtId = id;
+			} else {
+				console.error(`[config error] Court name "${court}" not found in config.txt`);
 			}
 		}
 		if (id != 6) {
@@ -202,11 +228,11 @@ class Match {
 
 		let p1 = match?.["@t1name"];
 		if (p1) {
-			this.p1 = p1;
+			this.p1 = formatName(p1);
 		}
 		let p2 = match?.["@t2name"];
 		if (p2) {
-			this.p2 = p2;
+			this.p2 = formatName(p2);
 		}
 		let matchTime = match["@matchtime"];
 		if (matchTime) {
@@ -273,12 +299,12 @@ class Match {
 }
 
 function printMatches() {
-	let str = "<data>\n";
+	let str = "<data>";
 
 	config.courts.forEach((ct: { type: string; value: number | string }) => {
 		if (ct.value == "skip") {
 			console.error(
-				`[skip defined in config] Printing empty row for match ${ct.value}`,
+				`[skip] Printing empty row for match ${ct.type}`,
 			);
 			str = str + "<row/>\n";
 		} else {
@@ -297,10 +323,10 @@ function printMatches() {
 						"[edge case] Invalid match is missing matchId stored in state",
 					);
 				}
-				console.error(`Printing match ${match.matchId}`);
+				console.error(`Printing match ${match.matchId} on court "${match.courtName}"`);
 				str = str + match.toXML();
 			} else {
-				console.error(`[edge case] Printing empty row for match ${ct.value}`);
+				console.error(`[edge case] Printing empty row for match ${ct.value} n="${n}"`);
 				str = str + "<row/>\n";
 			}
 		}
@@ -314,7 +340,7 @@ function updateMatchWithData(matchData: any) {
 		let id: number = matchData["@matchid"];
 		let match = map.get(id);
 		if (typeof match == "undefined") {
-			match = new Match(id);
+			match = new Match();
 		}
 		match.update(matchData);
 		map.set(match.matchId, match);
@@ -343,7 +369,7 @@ ws.onmessage = function (event) {
 			updateMatchWithData(parsed.match);
 			console.error("Updated Match");
 		} else {
-			console.error("No match defined in parsed data. Unhandled edge case!!!");
+			console.error("[edge case] No match defined in parsed data");
 			console.error(msg);
 			return;
 		}
@@ -351,6 +377,8 @@ ws.onmessage = function (event) {
 	} else if (msg.includes("<ct/>")) {
 		ws.send("<ct/>");
 		console.error("CT");
+	} else if (msg.includes("<login") && msg.includes(`result="valid`)) {
+		console.error("Successful Login");
 	} else {
 		console.error(`[message] Data received from server`);
 		console.error(event.data);
