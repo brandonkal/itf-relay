@@ -1,0 +1,341 @@
+import { parse } from "https://deno.land/x/xml@2.1.1/mod.ts";
+import { debounce } from "https://deno.land/std@0.194.0/async/debounce.ts";
+import * as archieml from "https://x.kite.run/lib/archieml.js";
+
+const subscriptions = new Set<number>();
+const map = new Map<number, Match>();
+
+const VERSION = "1.0";
+
+console.error(
+	`Starting ITF Relay by Brandon Kalinowski v${VERSION}. Reads config.txt file from binary directory.`,
+);
+
+const configTemplate = `username: 
+password: 
+filename: itf-data.xml
+
+[+courts]
+CentreCourt: skip
+Court8: skip
+Court11: skip
+Court1: skip
+Court7: skip
+[]
+`;
+
+// Initialize from config file
+
+// Check if config file exists
+try {
+	const f = await Deno.open("config.txt");
+} catch (e) {
+	if (e instanceof Deno.errors.NotFound) {
+		console.error("Config file does not exists. Writing template config.txt");
+		Deno.writeTextFileSync("config.txt", configTemplate);
+		Deno.exit(1);
+	}
+}
+
+let config: any = archieml.load(Deno.readTextFileSync("config.txt"));
+
+if (
+	!config.username || !config.password || !config.filename.endsWith(".xml") ||
+	!config.courts
+) {
+	console.error(
+		"Invalid usage. Expected ArchieML config.txt file with username, password, XML filename, and court configs but got",
+	);
+	console.error(config);
+	Deno.exit(1);
+}
+
+// Match ID examples
+// "42324353"
+// "42325417"
+
+const ws = new WebSocket("wss://livedata.betradar.com:2018/");
+
+const parseConfig = debounce(async () => {
+	config = await Deno.readTextFile("config.txt");
+	let data = archieml.load(config);
+	console.log(JSON.stringify(data));
+}, 200);
+
+async function watchConfigFile() {
+	for await (const event of Deno.watchFs("config.txt")) {
+		parseConfig();
+		updateSubscriptions();
+	}
+}
+
+function updateSubscriptions() {
+	config.courts.forEach((ct: any) => {
+		if (ct && ct.value && ct.type != "text" && ct.value != "skip") {
+			let v = ct.value;
+			if (!subscriptions.has(v)) {
+				subscribe(v);
+				subscriptions.add(v);
+			}
+		} else {
+			console.error(
+				`[warning] invalid court value in config: "${JSON.stringify(ct)}"`,
+			);
+		}
+	});
+}
+
+class Match {
+	p1: string;
+	p2: string;
+	time: string;
+	p1_score: number[];
+	p2_score: number[];
+	p1_serve: string;
+	p2_serve: string;
+
+	tournament: string;
+	matchId: number;
+	courtId: number;
+	courtName: string;
+
+	lastUpdated: Date;
+
+	constructor(matchId: number) {
+		this.p1 = "";
+		this.p2 = "";
+		this.time = "";
+		this.p1_score = [0, 0, 0, 0];
+		this.p2_score = [0, 0, 0, 0];
+		this.p1_serve = "";
+		this.p2_serve = "";
+
+		this.tournament = "";
+		this.courtId = 100;
+		this.matchId = 0;
+		this.courtName = "";
+		this.lastUpdated = new Date();
+	}
+
+	toXML() {
+		return `
+<row>
+	<CourtId>${this.courtId}</CourtId>
+	<MatchTime>${this.time}</MatchTime>
+	<CourtName>${this.courtName}</CourtName>
+	<MatchId>${this.matchId}</MatchId>
+	<LastUpdated>${this.lastUpdated.toISOString()}</LastUpdated>
+
+	<Player_1_Name>${this.p1}</Player_1_Name>
+	<Player_2_Name>${this.p2}</Player_2_Name>
+	<Player_1_Points>${this.p1_score[0]}</Player_1_Points>
+	<Player_2_Points>${this.p2_score[0]}</Player_2_Points>
+	<Player_1_Serve>${this.p1_serve}</Player_1_Serve>
+	<Player_2_Serve>${this.p2_serve}</Player_2_Serve>
+
+	<Player_1_Set_1>${this.p1_score[1]}</Player_1_Set_1>
+	<Player_1_Set_2>${this.p1_score[2]}</Player_1_Set_2>
+	<Player_1_Set_3>${this.p1_score[3]}</Player_1_Set_3>
+	<Player_2_Set_1>${this.p2_score[1]}</Player_2_Set_1>
+	<Player_2_Set_2>${this.p2_score[2]}</Player_2_Set_2>
+	<Player_2_Set_3>${this.p2_score[3]}</Player_2_Set_3>
+</row>
+`;
+	}
+
+	updateCourt(match: any) {
+		let court = "";
+		let id = 6;
+		if (match["court"]) {
+			court = match["court"]?.["@name"];
+			switch (court) {
+				case "Centre Court":
+					id = 0;
+				case "Court 8":
+					id = 1;
+					break;
+				case "Court 1":
+					id = 2;
+					break;
+				case "Court 11":
+					id = 3;
+					break;
+				case "Court 7":
+					id = 4;
+					break;
+				default:
+					id = 6;
+			}
+		}
+		if (id != 6) {
+			this.courtName = court;
+			this.courtId = id;
+		}
+	}
+
+	update(match: any) {
+		this.updateCourt(match);
+		this.lastUpdated = new Date();
+		if (typeof match["@matchid"] != "undefined") {
+			this.matchId = match["@matchid"];
+		}
+
+		let p1 = match?.["@t1name"];
+		if (p1) {
+			this.p1 = p1;
+		}
+		let p2 = match?.["@t2name"];
+		if (p2) {
+			this.p2 = p2;
+		}
+		let matchTime = match["@matchtime"];
+		if (matchTime) {
+			this.time = matchTime;
+		}
+
+		if (match.score) {
+			let score: [] = match.score;
+			let game = score.find((v) => {
+				if (v["@type"] == "game") {
+					return true;
+				}
+				return false;
+			});
+			if (typeof game !== "undefined") {
+				this.p1_score[0] = game["@t1"];
+				this.p2_score[0] = game["@t2"];
+			}
+
+			let set1 = score.find((v) => {
+				if (v["@type"] == "set1") {
+					return true;
+				}
+				return false;
+			});
+			if (typeof set1 !== "undefined") {
+				this.p1_score[1] = set1["@t1"];
+				this.p2_score[1] = set1["@t2"];
+			}
+			let set2 = score.find((v) => {
+				if (v["@type"] == "set2") {
+					return true;
+				}
+				return false;
+			});
+			if (typeof set2 !== "undefined") {
+				this.p1_score[2] = set2["@t1"];
+				this.p2_score[2] = set2["@t2"];
+			}
+			let set3 = score.find((v) => {
+				if (v["@type"] == "set3") {
+					return true;
+				}
+				return false;
+			});
+			if (typeof set3 !== "undefined") {
+				this.p1_score[3] = set3["@t1"];
+				this.p2_score[3] = set3["@t2"];
+			}
+		}
+		if (match.serve) {
+			let team = match.serve?.["@team"];
+			if (team) {
+				if (team == "home") {
+					this.p1_serve = ".";
+					this.p1_serve = "";
+				} else if (team == "away") {
+					this.p1_serve = "";
+					this.p2_serve = ".";
+				}
+			}
+		}
+	}
+}
+
+function printMatches() {
+	let str = "<data>\n";
+
+	config.courts.forEach((ct: { type: string; value: number | string }) => {
+		if (ct.value == "skip") {
+			console.error(`[skip defined in config] Printing empty row for match ${ct.value}`);
+			str = str + "<row></row\n";
+		} else if (map.has(ct.value as number)) {
+			let match = map.get(ct.value as number)!;
+			console.error(`Printing match ${match.matchId}`);
+			str = str + match.toXML();
+		} else {
+			console.error(`Printing empty row for match ${ct.value}`);
+			str = str + "<row></row\n";
+		}
+	});
+
+	map.forEach((match) => {
+		str = str + match.toXML();
+	});
+	str = str + "</data>";
+	Deno.writeTextFile(config.filename, str);
+}
+
+function updateMatchWithData(matchData: any) {
+	if (matchData && matchData["@matchid"]) {
+		let id: number = matchData["@matchid"];
+		let match = map.get(id);
+		if (typeof match == "undefined") {
+			match = new Match(id);
+		}
+		match.update(matchData);
+		map.set(match.matchId, match);
+	}
+}
+
+function subscribe(matchId: number | string) {
+	ws.send(`<match matchid="${matchId}" feedtype="full"/>`); // The server appears to ignore my request for full
+}
+
+ws.onopen = function (e) {
+	console.error("Connection Established");
+	ws.send(
+		`<login><credential><loginname value="${config.username}"/><password value="${config.password}"/></credential></login>`,
+	);
+	updateSubscriptions();
+	watchConfigFile();
+};
+
+ws.onmessage = function (event) {
+	let msg: string = event.data;
+	if (msg.includes("<match")) {
+		let parsed = parse(msg);
+
+		if (parsed.match) {
+			updateMatchWithData(parsed.match);
+			console.error("Updated Match");
+		} else {
+			console.error("No match defined in parsed data. Unhandled edge case!!!");
+			console.error(msg);
+			return;
+		}
+		printMatches();
+	} else if (msg.includes("<ct/>")) {
+		ws.send("<ct/>");
+		console.error("CT");
+	} else {
+		console.error(`[message] Data received from server`);
+		console.error(event.data);
+	}
+};
+
+ws.onclose = function (event) {
+	if (event.wasClean) {
+		alert(
+			`[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`,
+		);
+	} else {
+		// e.g. server process killed or network down
+		// event.code is usually 1006 in this case
+		console.error("[close] Connection died");
+	}
+};
+
+ws.onerror = function (error) {
+	console.error(`[error] ${error}`);
+};
