@@ -5,7 +5,7 @@ import * as archieml from "https://x.kite.run/lib/archieml.js";
 const subscriptions = new Set<number>();
 const map = new Map<number, Match>();
 
-const VERSION = "1.7";
+const VERSION = "1.8";
 
 const DATA_ENDPOINT = "wss://livedata.betradar.com:2018/";
 
