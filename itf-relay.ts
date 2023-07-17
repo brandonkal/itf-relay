@@ -212,6 +212,7 @@ class Match {
 		if (match["court"]) {
 			court = match["court"]?.["@name"];
 			court = court.replaceAll(" ", "");
+			this.courtName = court;
 			id = config?.cm?.get(court);
 			if (typeof id != "undefined") {
 				this.courtName = court;
