@@ -173,6 +173,9 @@ class Match {
 	}
 
 	toXML() {
+		// 50 represents an advantage so handle its transform on printing here
+		let p1g = this.p1_score[0];
+		let p2g = this.p1_score[0];
 		return `
 <row>
 	<CourtId>${this.courtId}</CourtId>
@@ -183,8 +186,8 @@ class Match {
 
 	<Player_1_Name>${this.p1}</Player_1_Name>
 	<Player_2_Name>${this.p2}</Player_2_Name>
-	<Player_1_Points>${this.p1_score[0]}</Player_1_Points>
-	<Player_2_Points>${this.p2_score[0]}</Player_2_Points>
+	<Player_1_Points>${p1g == 50 ? "Ad" : p1g}</Player_1_Points>
+	<Player_2_Points>${p2g == 50 ? "Ad" : p2g}</Player_2_Points>
 	<Player_1_Serve>${this.p1_serve}</Player_1_Serve>
 	<Player_2_Serve>${this.p2_serve}</Player_2_Serve>
 
@@ -212,10 +215,6 @@ class Match {
 			} else {
 				console.error(`[config error] Court name "${court}" not found in config.txt`);
 			}
-		}
-		if (id != 6) {
-			this.courtName = court;
-			this.courtId = id;
 		}
 	}
 
