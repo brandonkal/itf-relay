@@ -137,7 +137,7 @@ function formatName(input: string): string {
 		if (input.length <= 12) {
 			return input;
 		}
-		let parts = input.split("/").map(str => str.trim());
+		let parts = input.split("/").map((str) => str.trim());
 		if (parts.length >= 2) {
 			let playerA = parts[0].substring(0, 4).trim();
 			let playerB = parts[1].substring(0, 4).trim();
@@ -145,7 +145,7 @@ function formatName(input: string): string {
 		}
 		return input;
 	}
-	let parts = input.split(", ").map(str => str.trim());
+	let parts = input.split(", ").map((str) => str.trim());
 	if (parts.length >= 2) {
 		return `${parts[1][0]}. ${parts[0]}`.substring(0, 12).trim();
 	}
