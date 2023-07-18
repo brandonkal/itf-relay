@@ -5,7 +5,7 @@ import * as archieml from "https://x.kite.run/lib/archieml.js";
 const subscriptions = new Set<number>();
 const map = new Map<number, Match>();
 
-const VERSION = "1.10";
+const VERSION = "1.11";
 
 const DATA_ENDPOINT = "wss://livedata.betradar.com:2018/";
 
@@ -27,13 +27,9 @@ Court7: skip
 []
 `;
 
-// If 50 make Ad
-// If serve team home change serve marker
-
-// courts: [{"court11"}]
+// Example { courts: [{ type: "court11", value: "42324353"}] }
 
 // Initialize from config file
-
 // Check if config file exists
 try {
 	const f = await Deno.open("config.txt");
@@ -75,10 +71,6 @@ if (
 		courtIds.set(ct.type, i);
 	});
 }
-
-// Match ID examples
-// "42324353"
-// "42325417"
 
 type Config = {
 	username: string;
@@ -139,11 +131,25 @@ function updateSubscriptions() {
 }
 
 function formatName(input: string): string {
-	let parts = input.split(", ");
-	if (parts.length >= 2) {
-		return `${parts[1][0]}. ${parts[0]}`;
+	// Max length is 12. So we truncate the name if required.
+
+	if (input.includes("/")) {
+		if (input.length <= 12) {
+			return input;
+		}
+		let parts = input.split("/").map(str => str.trim());
+		if (parts.length >= 2) {
+			let playerA = parts[0].substring(0, 4).trim();
+			let playerB = parts[1].substring(0, 4).trim();
+			return `${playerA} / ${playerB}`;
+		}
+		return input;
 	}
-	return input;
+	let parts = input.split(", ").map(str => str.trim());
+	if (parts.length >= 2) {
+		return `${parts[1][0]}. ${parts[0]}`.substring(0, 12).trim();
+	}
+	return input.trim();
 }
 
 class Match {
