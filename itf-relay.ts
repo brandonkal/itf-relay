@@ -4,8 +4,9 @@ import * as archieml from "https://x.kite.run/lib/archieml.js";
 
 const subscriptions = new Set<number>();
 const map = new Map<number, Match>();
+let advantageDisplay = "A";
 
-const VERSION = "1.11";
+const VERSION = "1.12";
 
 const DATA_ENDPOINT = "wss://livedata.betradar.com:2018/";
 
@@ -16,6 +17,7 @@ console.error(
 const configTemplate = `username: 
 password: 
 filename: itf-data.xml
+advantage: A
 
 [+courts]
 CentreCourt: skip
@@ -43,7 +45,7 @@ try {
 	}
 }
 
-let config: any = archieml.load(Deno.readTextFileSync("config.txt"));
+let config: Config = archieml.load(Deno.readTextFileSync("config.txt")) as Config;
 const courtIds = new Map<string, number>();
 
 function isConfigValid(config: any) {
@@ -76,6 +78,7 @@ type Config = {
 	username: string;
 	password: string;
 	filename: string;
+	advantage?: string;
 	courts: {
 		type: string;
 		value: string;
@@ -93,6 +96,9 @@ const parseConfigAndPrint = debounce(async () => {
 			courtIds.set(ct.type, i);
 		});
 		config = newConfig;
+		if (typeof config.advantage === "string") {
+			advantageDisplay = config.advantage;
+		}
 		console.error(
 			"[config] Change detected in config.txt. Updating subscriptions.",
 		);
@@ -198,8 +204,8 @@ class Match {
 
 	<Player_1_Name>${this.p1}</Player_1_Name>
 	<Player_2_Name>${this.p2}</Player_2_Name>
-	<Player_1_Points>${p1g == 50 ? "Ad" : p1g}</Player_1_Points>
-	<Player_2_Points>${p2g == 50 ? "Ad" : p2g}</Player_2_Points>
+	<Player_1_Points>${p1g == 50 ? advantageDisplay : p1g}</Player_1_Points>
+	<Player_2_Points>${p2g == 50 ? advantageDisplay : p2g}</Player_2_Points>
 	<Player_1_Serve>${this.p1_serve}</Player_1_Serve>
 	<Player_2_Serve>${this.p2_serve}</Player_2_Serve>
 
@@ -315,10 +321,10 @@ class Match {
 function printMatches() {
 	let str = "<data>";
 
-	config.courts.forEach((ct: { type: string; value: number | string }) => {
+	config.courts.forEach((ct, idx) => {
 		if (ct.value == "skip") {
 			console.error(
-				`[skip] Printing empty row for match ${ct.type}`,
+				`${idx} [skip] Printing empty row for match ${ct.type}`,
 			);
 			str = str + "<row/>\n";
 		} else {
@@ -338,7 +344,7 @@ function printMatches() {
 					);
 				}
 				console.error(
-					`Printing match ${match.matchId} on court "${match.courtName}"`,
+					`${idx} Printing match ${match.matchId} assigned to court "${match.courtName}"`,
 				);
 				str = str + match.toXML();
 			} else {
