@@ -45,7 +45,9 @@ try {
 	}
 }
 
-let config: Config = archieml.load(Deno.readTextFileSync("config.txt")) as Config;
+let config: Config = archieml.load(
+	Deno.readTextFileSync("config.txt"),
+) as Config;
 const courtIds = new Map<string, number>();
 
 function isConfigValid(config: any) {
